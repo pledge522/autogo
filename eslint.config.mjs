@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // vendored opencode 源码,整体替换升级,不参与本项目 lint/typecheck
+    "opencode/**",
+    // 会话沙箱产物
+    "temp/**",
   ]),
 ]);
 

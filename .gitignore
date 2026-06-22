@@ -39,3 +39,19 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# temp directory for sandbox projects
+/temp/
+
+# opencode server data
+/.opencode/
+opencode.db
+opencode.db-shm
+opencode.db-wal
+
+# opencode subdirectory (source is tracked, dependencies are not)
+/opencode/node_modules/
+/opencode/.opencode/
+/opencode/opencode.db
+/opencode/opencode.db-shm
+/opencode/opencode.db-wal
