@@ -81,7 +81,7 @@ export async function* runAgent(
     await client.promptAsync(
       opencodeSessionId,
       { text: userMessage },
-      { providerID: "deepseek", modelID: "deepseek-chat" },
+      { providerID: "deepseek", modelID: "deepseek-v4-pro" },
     );
   } catch (err) {
     console.error("[runAgent] promptAsync 失败:", err);
@@ -153,7 +153,7 @@ async function getOrCreateOpencodeSession(
     location: { directory: projectDir },
     model: {
       providerID: "deepseek",
-      id: "deepseek-chat",
+      id: "deepseek-v4-pro",
     },
   });
   console.log("[runAgent] 会话已创建:", result.data.id);
