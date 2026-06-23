@@ -6,13 +6,14 @@ import { useChat } from "@/hooks/useChat";
 import { ChatPanel } from "@/components/ChatPanel";
 import { ChatInput } from "@/components/ChatInput";
 import { PreviewPanel, type ViteError } from "@/components/PreviewPanel";
-import { Sparkles, Wand2 } from "lucide-react";
+import { Sparkles, Wand2, Bug } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
+import type { ChatMessage } from "@/types";
 
 export default function BuilderPage() {
   const { session, isReady, createSession } = useSession();
-  const { messages, isLoading, statusText, sendMessage, abort } = useChat();
+  const { messages, isLoading, statusText, sendMessage, abort, setMessages } = useChat();
   const [viteError, setViteError] = useState<ViteError | null>(null);
   const autoFixingRef = useRef(false);
   const lastErrorRef = useRef<string>("");
@@ -88,6 +89,79 @@ ${viteError.line ? `行号：${viteError.line}` : ''}
     lastErrorRef.current = "";
   }, []);
 
+  // 测试：添加测试消息
+  const handleTestMessages = useCallback(() => {
+    const testMessages: ChatMessage[] = [
+      { id: 'test-thinking', role: 'thinking', text: '用户要求做一个计算器。这是一个简单的前端任务。\n\n我需要：\n1. 创建一个 HTML 文件\n2. 实现计算器功能\n3. 添加样式' },
+      { id: 'test-file1', role: 'file_change', path: 'src/App.tsx', action: 'create' },
+      { id: 'test-file2', role: 'file_change', path: 'src/index.css', action: 'modify' },
+      { id: 'test-tool', role: 'tool_call', name: 'write_file', input: { path: 'src/App.tsx' } },
+      { id: 'test-tool-result', role: 'tool_result', name: 'write_file', output: '✓ 文件已创建' },
+      { id: 'test-assistant', role: 'assistant', content: '计算器已创建完成！' },
+    ];
+    setMessages(testMessages);
+  }, [setMessages]);
+
+  // 测试：打印 opencode 响应结构
+  const handleDebugOpencode = useCallback(async () => {
+    if (!session) return;
+
+    try {
+      // 测试 opencode event 端点
+      const eventResponse = await fetch("/api/opencode-event");
+      if (!eventResponse.ok) {
+        const errorData = await eventResponse.json();
+        console.error('[Debug] Event API Error:', errorData);
+        alert('Event API Error: ' + JSON.stringify(errorData));
+        return;
+      }
+
+      const reader = eventResponse.body?.getReader();
+      if (!reader) {
+        alert('No reader available');
+        return;
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let eventCount = 0;
+
+      console.log('[Debug] Listening to opencode events...');
+
+      const readEvents = async () => {
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
+
+            for (const line of lines) {
+              if (line.startsWith("data: ")) {
+                const data = JSON.parse(line.slice(6));
+                eventCount++;
+                console.log(`[Debug] Event ${eventCount}:`, data);
+              }
+            }
+
+            // 收到 10 个事件后停止
+            if (eventCount >= 10) break;
+          }
+        } catch (error) {
+          console.error('[Debug] Event reading error:', error);
+        }
+      };
+
+      readEvents();
+      alert('正在监听 opencode 事件，请查看浏览器控制台');
+    } catch (error) {
+      console.error('[Debug] Error:', error);
+      alert('错误：' + (error as any).message);
+    }
+  }, [session]);
+
   // 环境未准备好时显示 Loading
   if (!isReady) {
     return (
@@ -135,6 +209,21 @@ ${viteError.line ? `行号：${viteError.line}` : ''}
               忽略错误
             </Button>
           )}
+          <Button
+            variant="secondary"
+            onClick={handleTestMessages}
+            className="h-8 px-3 text-xs gap-1.5"
+          >
+            <Bug size={12} />
+            测试消息
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleDebugOpencode}
+            className="h-8 px-3 text-xs gap-1.5"
+          >
+            🔍 调试
+          </Button>
           <Button
             variant="secondary"
             onClick={createSession}

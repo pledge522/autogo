@@ -8,6 +8,7 @@ interface UseChatReturn {
   statusText: string;
   sendMessage: (sessionId: string, text: string) => void;
   abort: () => void;
+  setMessages: (msgs: ChatMessage[]) => void;
 }
 
 export function useChat(): UseChatReturn {
@@ -35,16 +36,6 @@ export function useChat(): UseChatReturn {
       setIsLoading(true);
       setStatusText("正在连接...");
 
-      // 准备接收 AI 回复
-      const assistantId = `assistant-${Date.now()}`;
-      let assistantText = "";
-
-      // 创建 assistant 消息占位
-      setMessages((prev) => [
-        ...prev,
-        { id: assistantId, role: "assistant", content: "" },
-      ]);
-
       // 关闭旧的 EventSource（如果有）
       esRef.current?.close();
 
@@ -59,27 +50,104 @@ export function useChat(): UseChatReturn {
       es.onmessage = (e: MessageEvent) => {
         try {
           const event: SseEvent = JSON.parse(e.data);
-          console.log("[useChat] SSE 事件:", event.type,
-            event.type === "text_delta" ? (event as { text: string }).text.slice(0, 30) :
-            event.type === "tool_call" ? (event as { name: string }).name :
-            event.type === "status" ? (event as { message: string }).message : "");
+          console.log("[useChat] SSE 事件:", event.type, event);
 
           switch (event.type) {
             case "status":
               setStatusText(event.message);
               break;
 
-            case "text_delta":
-              setMessages((prev) =>
-                prev.map((msg) => {
-                  if (msg.id === assistantId && msg.role === "assistant") {
-                    const newText = (msg.content || "") + event.text;
-                    assistantText = newText;
-                    return { ...msg, content: newText };
-                  }
-                  return msg;
-                })
-              );
+            case "thinking":
+              // 思考过程作为独立消息
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: `thinking-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                  role: "thinking",
+                  text: event.text,
+                },
+              ]);
+              break;
+
+            case "file_change":
+              // 文件变更作为独立消息
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: `file-change-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                  role: "file_change",
+                  path: event.path,
+                  action: event.action,
+                  content: event.content,
+                },
+              ]);
+              break;
+
+            case "command_start":
+              // 命令开始
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: `command-start-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                  role: "command_start",
+                  command: event.command,
+                },
+              ]);
+              break;
+
+            case "command_output":
+              // 命令输出 - 追加到上一个 command_start 或 command_output
+              setMessages((prev) => {
+                const lastCommandIndex = prev.findLastIndex(
+                  m => m.role === "command_start" || m.role === "command_output" || m.role === "command_complete"
+                );
+                if (lastCommandIndex >= 0) {
+                  const lastMsg = prev[lastCommandIndex];
+                  const updatedMsg = {
+                    ...lastMsg,
+                    output: (lastMsg as any).output ? (lastMsg as any).output + event.output : event.output,
+                  };
+                  const newPrev = [...prev];
+                  newPrev[lastCommandIndex] = updatedMsg as any;
+                  return newPrev;
+                }
+                // 如果没有找到之前的命令消息，创建一个新的
+                return [
+                  ...prev,
+                  {
+                    id: `command-output-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                    role: "command_output",
+                    output: event.output,
+                  },
+                ];
+              });
+              break;
+
+            case "command_complete":
+              // 命令完成 - 更新上一个命令消息的退出码
+              setMessages((prev) => {
+                const lastCommandIndex = prev.findLastIndex(
+                  m => m.role === "command_start" || m.role === "command_output" || m.role === "command_complete"
+                );
+                if (lastCommandIndex >= 0) {
+                  const lastMsg = prev[lastCommandIndex];
+                  const updatedMsg = {
+                    ...lastMsg,
+                    exitCode: event.exitCode,
+                  };
+                  const newPrev = [...prev];
+                  newPrev[lastCommandIndex] = updatedMsg as any;
+                  return newPrev;
+                }
+                return [
+                  ...prev,
+                  {
+                    id: `command-complete-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                    role: "command_complete",
+                    exitCode: event.exitCode,
+                  },
+                ];
+              });
               break;
 
             case "tool_call":
@@ -157,5 +225,5 @@ export function useChat(): UseChatReturn {
     []
   );
 
-  return { messages, isLoading, statusText, sendMessage, abort };
+  return { messages, isLoading, statusText, sendMessage, abort, setMessages };
 }

@@ -1,8 +1,11 @@
 "use client";
 
 import type { ChatMessage as ChatMessageType } from "@/types";
-import { User, Bot, Wrench, AlertCircle, FileCode, Terminal, CheckCircle } from "lucide-react";
+import { User, Bot, Wrench, AlertCircle, FileCode, Terminal, CheckCircle, Brain } from "lucide-react";
 import { motion } from "framer-motion";
+import { ThinkingProcess } from "./ThinkingProcess";
+import { FileChangeItem } from "./FileChangeItem";
+import { CommandOutput } from "./CommandOutput";
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -18,6 +21,15 @@ export function ChatMessage({ message }: ChatMessageProps) {
       return <ToolCallMessage name={message.name} input={message.input} />;
     case "tool_result":
       return <ToolResultMessage name={message.name} output={message.output} />;
+    case "thinking":
+      return <ThinkingMessage text={message.text} />;
+    case "file_change":
+      return <FileChangeMessage path={message.path} action={message.action} content={message.content} />;
+    case "command_start":
+    case "command_output":
+    case "command_complete":
+      // 这些由 CommandOutput 统一处理，在 ChatPanel 中聚合展示
+      return null;
     case "error":
       return <ErrorMessage content={message.content} />;
   }
@@ -89,10 +101,10 @@ function AssistantMessage({ content }: { content: string }) {
 }
 
 function ToolCallMessage({ name, input }: { name: string; input: Record<string, unknown> }) {
-  const isFileOp = name === "write_file" || name === "edit_file" || name === "read_file";
-  const isBash = name === "bash";
-  const displayPath = input.path as string || "";
-  const displayCommand = input.command as string || "";
+  const isFileOp = name === "write" || name === "edit" || name === "read" || name === "glob" || name === "grep";
+  const isBash = name === "bash" || name === "shell";
+  const displayPath = (input.path || input.filePath || input.file || "") as string;
+  const displayCommand = (input.command || "") as string;
 
   return (
     <motion.div
@@ -130,7 +142,7 @@ function ToolCallMessage({ name, input }: { name: string; input: Record<string, 
 
 function ToolResultMessage({ name, output }: { name: string; output: string }) {
   const isError = output.startsWith("Error:");
-  const isSuccess = output.startsWith("OK:");
+  const isSuccess = output.startsWith("OK:") || output.startsWith("✓");
   const isTruncated = output.length > 300;
   const display = isTruncated ? output.slice(0, 300) + "..." : output;
 
@@ -158,6 +170,14 @@ function ToolResultMessage({ name, output }: { name: string; output: string }) {
       </div>
     </motion.div>
   );
+}
+
+function ThinkingMessage({ text }: { text: string }) {
+  return <ThinkingProcess text={text} title="思考过程" defaultExpanded={true} />;
+}
+
+function FileChangeMessage({ path, action, content }: { path: string; action: "create" | "modify" | "delete"; content?: string }) {
+  return <FileChangeItem path={path} action={action} content={content} />;
 }
 
 function ErrorMessage({ content }: { content: string }) {

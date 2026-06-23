@@ -68,6 +68,18 @@ export interface MessagePart {
   snapshot?: string;
   messageID?: string;
   sessionID?: string;
+  // reasoning part
+  providerMetadata?: Record<string, unknown>;
+  // tool part (opencode v1 格式)
+  callID?: string;
+  state?: {
+    status: "pending" | "running" | "completed" | "error";
+    input?: Record<string, unknown>;
+    output?: string;
+    error?: string;
+    title?: string;
+    time?: { start: number; end?: number };
+  };
 }
 
 /** 消息元信息 */
@@ -181,9 +193,11 @@ export class OpencodeClient {
     sessionID: string,
     input: MessageInput,
     signal?: AbortSignal,
+    model?: { providerID: string; modelID: string },
   ): Promise<SessionMessageResponse> {
-    const body = {
+    const body: Record<string, unknown> = {
       parts: [{ type: "text" as const, text: input.text }],
+      model,
     };
     const url = new URL(`/session/${sessionID}/message`, this.baseUrl);
 
@@ -208,6 +222,53 @@ export class OpencodeClient {
   /** 获取会话上下文（消息历史） */
   async getContext(sessionID: string): Promise<{ data: unknown[] }> {
     return this.request("GET", `/api/session/${sessionID}/context`);
+  }
+
+  /** 获取完整消息列表（直接返回 SessionV1.WithParts[] 数组） */
+  async getMessages(sessionID: string): Promise<Array<{ info: { role: string; finish?: string }; parts: MessagePart[] }>> {
+    return this.request("GET", `/session/${sessionID}/message`);
+  }
+
+  /** 异步发送消息（立即返回，agent loop 在后台执行） */
+  async promptAsync(
+    sessionID: string,
+    input: MessageInput,
+    model?: { providerID: string; modelID: string },
+  ): Promise<void> {
+    const url = new URL(`/session/${sessionID}/prompt_async`, this.baseUrl);
+    const body = {
+      parts: [{ type: "text" as const, text: input.text }],
+      model,
+    };
+    const response = await fetch(url.toString(), {
+      method: "POST",
+      headers: this.makeHeaders(),
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const error = await response.text();
+      throw new OpencodeApiError(response.status, `opencode API error: ${response.status} ${error}`);
+    }
+  }
+
+  /** 等待 session agent loop 完成 */
+  async wait(sessionID: string): Promise<void> {
+    await this.request("POST", `/api/session/${sessionID}/wait`);
+  }
+
+  /** 订阅实时事件流 */
+  async subscribeEvents(directory?: string): Promise<ReadableStream<Uint8Array>> {
+    const url = new URL("/event", this.baseUrl);
+    if (directory) {
+      url.searchParams.set("directory", directory);
+    }
+    const response = await fetch(url.toString(), {
+      headers: this.makeHeaders(),
+    });
+    if (!response.ok) {
+      throw new OpencodeApiError(response.status, `Failed to subscribe to events`);
+    }
+    return response.body!;
   }
 
   /** 等待会话完成 */

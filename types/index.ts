@@ -15,7 +15,11 @@ export type SseEvent =
   | { type: "text_delta"; text: string }
   | { type: "tool_call"; name: string; input: Record<string, unknown> }
   | { type: "tool_result"; name: string; output: string }
-  | { type: "file_change"; path: string; action: "create" | "modify" | "delete" }
+  | { type: "file_change"; path: string; action: "create" | "modify" | "delete"; content?: string }
+  | { type: "thinking"; text: string }
+  | { type: "command_start"; command: string }
+  | { type: "command_output"; output: string }
+  | { type: "command_complete"; exitCode: number }
   | { type: "error"; message: string }
   | { type: "complete" };
 
@@ -25,4 +29,9 @@ export type ChatMessage =
   | { id: string; role: "assistant"; content: string }
   | { id: string; role: "tool_call"; name: string; input: Record<string, unknown> }
   | { id: string; role: "tool_result"; name: string; output: string }
+  | { id: string; role: "file_change"; path: string; action: "create" | "modify" | "delete"; content?: string }
+  | { id: string; role: "thinking"; text: string }
+  | { id: string; role: "command_start"; command: string }
+  | { id: string; role: "command_output"; output: string }
+  | { id: string; role: "command_complete"; exitCode: number }
   | { id: string; role: "error"; content: string };

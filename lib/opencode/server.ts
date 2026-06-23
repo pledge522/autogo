@@ -145,6 +145,7 @@ export async function startOpencodeServer(
         ...process.env,
         // 完整版 OpenCode server 需要的环境变量
         OPENCODE_SERVER_PASSWORD: authPassword,
+        DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY || "",
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
