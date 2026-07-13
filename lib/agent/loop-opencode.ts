@@ -1,15 +1,10 @@
 /**
  * 基于 opencode 的 Agent 循环
  *
- * 使用 opencode headless server 的 instance httpapi：
- *   POST /session/:id/message  → 同步返回完整 AI 回复
- *   请求体格式: { parts: [{ type: "text", text: "..." }] }
- *   响应: { info: { finish, tokens, ... }, parts: [...] }
- *
- * parts 数组中每个元素的 type 可能是：
- *   step-start, reasoning, text, tool-call, step-finish 等
- * 这里按 type 映射到 autogo 的 SSE 事件，逐个 yield 给前端，
- * 模拟流式效果。
+ * 使用 promptAsync（异步触发）+ getMessages 轮询：
+ * - promptAsync 立即返回，agent loop 在后台执行
+ * - 轮询 /session/:id/messages 获取实时事件
+ * - 前端实时看到思考过程、工具调用、文件变更等
  */
 
 import { existsSync } from "fs";
@@ -19,12 +14,7 @@ import {
   startOpencodeServer,
   getGlobalOpencodeServer,
 } from "@/lib/opencode/server";
-import {
-  OpencodeApiError,
-  type OpencodeClient,
-  type SessionMessageResponse,
-  type MessagePart,
-} from "@/lib/opencode/client";
+import { type MessagePart } from "@/lib/opencode/client";
 
 /** autogo 会话 ID → opencode 会话 ID 的映射 */
 const opencodeSessionMap = new Map<string, string>();
@@ -83,52 +73,67 @@ export async function* runAgent(
     }
   }
 
-  // 3. 发送消息（同步等待 AI 完整回复，免费模型可能较慢）
+  // 3. 异步触发 agent loop
   yield { type: "status", message: "正在生成…" };
-  console.error("[runAgent] 发送消息 session=%s prompt=%s", opencodeSessionId, userMessage.slice(0, 40));
-  const sendStart = Date.now();
+  console.error("[runAgent] promptAsync session=%s", opencodeSessionId);
 
-  let result: SessionMessageResponse;
   try {
-    // 最多等 5 分钟（复杂请求可能触发多次工具调用）
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 300_000);
-    result = await client.sendMessage(
+    await client.promptAsync(
       opencodeSessionId,
       { text: userMessage },
-      controller.signal,
       { providerID: "deepseek", modelID: "deepseek-v4-flash" },
     );
-    clearTimeout(timeoutId);
   } catch (err) {
-    console.error("[runAgent] 发送消息失败 (耗时 %ds): %s",
-      Math.round((Date.now() - sendStart) / 1000),
-      err instanceof Error ? err.message : err);
-    yield { type: "error", message: `生成失败：${err instanceof Error ? err.message : err}` };
+    console.error("[runAgent] promptAsync 失败:", err);
+    yield { type: "error", message: `启动失败：${err instanceof Error ? err.message : err}` };
     return;
   }
 
-  console.log("[runAgent] AI 回复完成 finish=%s tokens=%o parts=%d",
-    result.info.finish, result.info.tokens, result.parts.length);
+  // 4. 轮询消息直到 agent loop 完成
+  const seenParts = new Set<string>();
+  let noNewCount = 0;
 
-  // 空响应检测
-  if (!result.parts.length || result.info.tokens?.output === 0) {
-    console.error("[runAgent] ⚠️ AI 返回了空响应！完整结果:", JSON.stringify(result).slice(0, 500));
-    yield {
-      type: "error",
-      message: "AI 返回了空响应。请检查 opencode 配置是否正确（模型/端点/key）。\n" +
-        "终端运行验证：cd opencode && echo 你好 | bun run packages/opencode/src/index.ts run",
-    };
-    return;
-  }
+  while (noNewCount < 60) {
+    await new Promise(resolve => setTimeout(resolve, 1000));
 
-  // 4. 遍历 parts，逐个 yield 事件
-  for (const part of result.parts) {
-    for (const event of mapPartToEvents(part, result.info)) {
-      yield event;
+    const messages = await client.getMessages(opencodeSessionId);
+    let hasNew = false;
+
+    for (const msg of messages) {
+      if (msg.info?.role !== "assistant") continue;
+      for (const part of msg.parts) {
+        const partId = (part as any).id || "";
+        const partText = part.text || "";
+
+        // 空 text part 不作去重（它还没有内容，后续会被填充）
+        if (part.type === "text" && !partText) continue;
+
+        // 去重：有内容的才记录
+        const key = partId ? `${(msg as any).info?.id || ""}-${partId}` : `${part.type}-${partText.slice(0, 40)}`;
+        if (seenParts.has(key)) continue;
+        seenParts.add(key);
+        hasNew = true;
+        noNewCount = 0;
+
+        if (part.type === "text") {
+          yield { type: "thinking", text: partText };
+          continue;
+        }
+        for (const event of mapPartToEvents(part)) yield event;
+      }
     }
+
+    // 检查最后一条 assistant 消息是否已完成
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg?.info?.finish && lastMsg.info.role === "assistant" && !hasNew) {
+      console.log("[runAgent] agent loop 完成 (finish=%s)", lastMsg.info.finish);
+      break;
+    }
+
+    if (!hasNew) noNewCount++;
   }
 
+  console.log("[runAgent] 轮询结束, noNewCount=%d", noNewCount);
   yield { type: "complete" };
 }
 
@@ -136,47 +141,49 @@ export async function* runAgent(
  * 获取已有或创建新的 opencode 会话
  */
 async function getOrCreateOpencodeSession(
-  client: OpencodeClient,
+  client: import("@/lib/opencode/client").OpencodeClient,
   autogoSessionId: string,
   projectDir: string,
 ): Promise<string> {
   const id = `${OPENCODE_SESSION_PREFIX}${autogoSessionId}`;
-  try {
-    const result = await client.createSession({
-      id,
-      location: { directory: projectDir },
-      model: { providerID: "deepseek", id: "deepseek-v4-flash" },
-    });
-    console.log("[runAgent] 会话已创建:", result.data.id);
-    return result.data.id;
-  } catch (err) {
-    if (err instanceof OpencodeApiError && err.status === 409) {
-      const existing = await client.getSession(id);
-      console.log("[runAgent] 复用已有会话:", existing.data.id);
-      return existing.data.id;
-    }
-    throw err;
-  }
+  // 用时间戳确保每次都是全新会话（避免 409 复用旧目录）
+  const freshId = `${OPENCODE_SESSION_PREFIX}${autogoSessionId}-${Date.now()}`;
+  const result = await client.createSession({
+    id: freshId,
+    location: { directory: projectDir },
+    model: {
+      providerID: "deepseek",
+      id: "deepseek-v4-flash",
+    },
+  });
+  console.log("[runAgent] 会话已创建:", result.data.id);
+  return result.data.id;
 }
 
 /**
  * 将单个 MessagePart 映射为 SseEvent 序列
  */
-function* mapPartToEvents(
-  part: MessagePart,
-  info: SessionMessageResponse["info"],
-): Generator<SseEvent> {
+function* mapPartToEvents(part: MessagePart): Generator<SseEvent> {
+  // 调试：打印每个 part 的详细信息
+  console.log("[mapPartToEvents] part.type=%s part.text=%s part.state=%o part.outputPaths=%o",
+    part.type,
+    part.text ? part.text.slice(0, 50) + (part.text.length > 50 ? "..." : "") : "",
+    part.state ? part.state.status : "N/A",
+    part.outputPaths);
+
   switch (part.type) {
     case "step-start":
       yield { type: "status", message: "正在思考..." };
       break;
 
-    case "reasoning":
-      // 思考过程 — 发送 thinking 事件让前端展示
-      if (part.text) {
-        yield { type: "thinking", text: part.text };
+    case "reasoning": {
+      // 思考过程 —— 产生 thinking 事件，展示实际内容
+      const text = part.text || "";
+      if (text) {
+        yield { type: "thinking", text };
       }
       break;
+    }
 
     case "text": {
       // AI 生成的文本 —— 作为 text_delta 推送
@@ -191,29 +198,56 @@ function* mapPartToEvents(
       break;
     }
 
-    case "tool-invocation": {
-      // opencode 工具调用 — 根据 state 区分 call/result
-      const toolInv = part.toolInvocation;
-      if (!toolInv) break;
+    case "tool": {
+      const state = part.state;
+      const toolName = part.tool || "unknown";
+      if (!state) break;
 
-      if (toolInv.state === "call" || toolInv.state === "partial-call") {
-        // 工具调用开始
-        yield {
-          type: "tool_call",
-          name: toolInv.toolName || "unknown",
-          input: toolInv.args || {},
-        };
-      } else if (toolInv.state === "result") {
-        // 工具调用结果
-        yield {
-          type: "tool_result",
-          name: toolInv.toolName || "unknown",
-          output: toolInv.result || "✓ 完成",
-        };
+      switch (state.status) {
+        case "pending":
+          // pending 时 input 为空，跳过，等 running/completed
+          break;
+
+        case "running": {
+          const toolInput = (state.input || {}) as Record<string, unknown>;
+          yield { type: "tool_call", name: toolName, input: toolInput };
+          break;
+        }
+
+        case "completed": {
+          const output = state.output || state.title || "✓ 完成";
+          yield {
+            type: "tool_result",
+            name: toolName,
+            output: output.length > 500 ? output.slice(0, 500) + "…" : output,
+          };
+          break;
+        }
+
+        case "error": {
+          yield {
+            type: "tool_result",
+            name: toolName,
+            output: `Error: ${state.error || "工具执行失败"}`,
+          };
+          break;
+        }
       }
       break;
     }
 
+    case "file": {
+      // 文件 part —— 产生 file_change 事件
+      const path = (part as any).filename || (part as any).url || "unknown";
+      yield {
+        type: "file_change",
+        path,
+        action: "create" as const,
+      };
+      break;
+    }
+
+    // 兼容旧的 tool-use / tool-call 格式
     case "tool-use":
     case "tool-call":
       yield {
@@ -229,6 +263,16 @@ function* mapPartToEvents(
         name: part.tool || "unknown",
         output: summarizeContent(part.content),
       };
+      // 同时检查是否有输出路径
+      if (part.outputPaths && part.outputPaths.length > 0) {
+        for (const path of part.outputPaths) {
+          yield {
+            type: "file_change",
+            path,
+            action: "create" as const,
+          };
+        }
+      }
       break;
 
     case "step-finish":
@@ -244,6 +288,7 @@ function* mapPartToEvents(
 
     default:
       // 其余 part 类型静默跳过
+      console.log("[mapPartToEvents] 未处理的 part 类型:", part.type);
       break;
   }
 }
