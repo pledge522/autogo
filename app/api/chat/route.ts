@@ -60,11 +60,13 @@ async function handleChat(sessionId: string | null, message: string | null) {
         if (event.type === "status") {
           console.error("[api/chat] → %s", event.message);
         } else if (event.type === "error") {
-          console.error("[api/chat] ✗ 错误: %s", event.message);
+          console.error("[api/chat] ✗ 错误：%s", event.message);
+        } else {
+          console.error("[api/chat] event: %s", event.type);
         }
       } catch (err: unknown) {
         const error = err instanceof Error ? err : new Error(String(err));
-        console.error("[api/chat] ✗ 异常: %s", error.message);
+        console.error("[api/chat] ✗ 异常：%s", error.message);
         try {
           const data = `data: ${JSON.stringify({ type: "error", message: error.message })}\n\n`;
           controller.enqueue(encoder.encode(data));

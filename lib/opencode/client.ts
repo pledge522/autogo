@@ -70,6 +70,15 @@ export interface MessagePart {
   sessionID?: string;
   // reasoning part
   providerMetadata?: Record<string, unknown>;
+  // tool-invocation part (opencode 格式)
+  toolInvocation?: {
+    state: "call" | "partial-call" | "result";
+    step?: number;
+    toolCallId: string;
+    toolName: string;
+    args?: Record<string, unknown>;
+    result?: string;
+  };
   // tool part (opencode v1 格式)
   callID?: string;
   state?: {

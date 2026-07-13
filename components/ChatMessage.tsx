@@ -105,6 +105,8 @@ function ToolCallMessage({ name, input }: { name: string; input: Record<string, 
   const isBash = name === "bash" || name === "shell";
   const displayPath = (input.path || input.filePath || input.file || "") as string;
   const displayCommand = (input.command || "") as string;
+  const displayDesc = (input.description || "") as string;
+  const displayPrompt = (input.prompt || "") as string;
 
   return (
     <motion.div
@@ -121,19 +123,29 @@ function ToolCallMessage({ name, input }: { name: string; input: Record<string, 
           <Wrench size={11} className="text-white" />
         )}
       </div>
-      <div className="flex-1 min-w-0 flex items-center gap-2">
-        <span className="text-xs font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
-          {name}
-        </span>
-        {displayPath && (
-          <span className="text-xs text-gray-500 truncate font-mono bg-gray-100 px-2 py-0.5 rounded">
-            {displayPath}
+      <div className="flex-1 min-w-0 flex flex-col gap-1">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full shrink-0">
+            {name}
           </span>
-        )}
-        {displayCommand && (
-          <span className="text-xs text-gray-500 truncate font-mono bg-gray-100 px-2 py-0.5 rounded">
-            {displayCommand}
-          </span>
+          {displayPath && (
+            <span className="text-xs text-gray-500 truncate font-mono bg-gray-100 px-2 py-0.5 rounded">
+              {displayPath}
+            </span>
+          )}
+          {displayCommand && (
+            <span className="text-xs text-gray-500 truncate font-mono bg-gray-100 px-2 py-0.5 rounded">
+              {displayCommand}
+            </span>
+          )}
+          {displayDesc && !displayPath && !displayCommand && (
+            <span className="text-xs text-gray-600 truncate">{displayDesc}</span>
+          )}
+        </div>
+        {displayPrompt && (
+          <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-2 py-1.5 font-mono whitespace-pre-wrap break-all max-h-20 overflow-y-auto border border-gray-100">
+            {displayPrompt.length > 500 ? displayPrompt.slice(0, 500) + "…" : displayPrompt}
+          </div>
         )}
       </div>
     </motion.div>
@@ -143,8 +155,8 @@ function ToolCallMessage({ name, input }: { name: string; input: Record<string, 
 function ToolResultMessage({ name, output }: { name: string; output: string }) {
   const isError = output.startsWith("Error:");
   const isSuccess = output.startsWith("OK:") || output.startsWith("✓");
-  const isTruncated = output.length > 300;
-  const display = isTruncated ? output.slice(0, 300) + "..." : output;
+  const isTruncated = output.length > 500;
+  const display = isTruncated ? output.slice(0, 500) + "..." : output;
 
   return (
     <motion.div
@@ -153,7 +165,7 @@ function ToolResultMessage({ name, output }: { name: string; output: string }) {
       className="ml-11 mb-2"
     >
       <div
-        className={`text-xs font-mono rounded-xl p-3 max-h-32 overflow-auto border ${
+        className={`text-xs font-mono rounded-xl p-3 max-h-48 overflow-auto border ${
           isError
             ? "bg-red-50 text-red-700 border-red-200"
             : isSuccess

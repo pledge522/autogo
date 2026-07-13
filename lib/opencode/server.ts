@@ -270,9 +270,19 @@ function stopOpencodeProcess(proc: ChildProcess): void {
 }
 
 /**
- * 获取全局 server 实例
+ * 获取全局 server 实例，如果 server 已死亡则返回 null
  */
 export function getGlobalOpencodeServer(): OpencodeServer | null {
+  if (!globalServer) return null;
+
+  // 检查进程是否存活
+  const proc = globalServer.process;
+  if (proc.exitCode !== null || proc.killed || !proc.pid) {
+    console.log("[opencode] Existing server process is dead, clearing reference");
+    globalServer = null;
+    return null;
+  }
+
   return globalServer;
 }
 

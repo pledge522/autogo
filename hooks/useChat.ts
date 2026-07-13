@@ -9,6 +9,7 @@ interface UseChatReturn {
   sendMessage: (sessionId: string, text: string) => void;
   abort: () => void;
   setMessages: (msgs: ChatMessage[]) => void;
+  clearMessages: () => void;
 }
 
 export function useChat(): UseChatReturn {
@@ -174,6 +175,33 @@ export function useChat(): UseChatReturn {
               ]);
               break;
 
+            case "text_delta":
+              // AI 回复的文本片段 — 追加到上一个 assistant 消息，或创建新的
+              setMessages((prev) => {
+                const lastAssistantIndex = prev.findLastIndex(m => m.role === "assistant");
+                if (lastAssistantIndex >= 0) {
+                  // 追加到已有的 assistant 消息
+                  const lastMsg = prev[lastAssistantIndex];
+                  const updatedMsg = {
+                    ...lastMsg,
+                    content: (lastMsg.content || "") + event.text,
+                  };
+                  const newPrev = [...prev];
+                  newPrev[lastAssistantIndex] = updatedMsg;
+                  return newPrev;
+                }
+                // 创建新的 assistant 消息
+                return [
+                  ...prev,
+                  {
+                    id: `assistant-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                    role: "assistant",
+                    content: event.text,
+                  },
+                ];
+              });
+              break;
+
             case "error":
               setStatusText("");
               setMessages((prev) => [
@@ -225,5 +253,7 @@ export function useChat(): UseChatReturn {
     []
   );
 
-  return { messages, isLoading, statusText, sendMessage, abort, setMessages };
+  const clearMessages = useCallback(() => setMessages([]), []);
+
+  return { messages, isLoading, statusText, sendMessage, abort, setMessages, clearMessages };
 }

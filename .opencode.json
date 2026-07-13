@@ -1,0 +1,22 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "deepseek/deepseek-v4-flash",
+  "small_model": "deepseek/deepseek-v4-flash",
+  "provider": {
+    "deepseek": {
+      "models": {
+        "deepseek-v4-flash": {
+          "tool_call": true,
+          "reasoning": true
+        }
+      }
+    }
+  },
+  "permission": {
+    "bash": "ask",
+    "write": "ask",
+    "read": "allow",
+    "edit": "ask"
+  },
+  "tools": {}
+}

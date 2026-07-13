@@ -13,7 +13,7 @@ import type { ChatMessage } from "@/types";
 
 export default function BuilderPage() {
   const { session, isReady, createSession } = useSession();
-  const { messages, isLoading, statusText, sendMessage, abort, setMessages } = useChat();
+  const { messages, isLoading, statusText, sendMessage, abort, setMessages, clearMessages } = useChat();
   const [viteError, setViteError] = useState<ViteError | null>(null);
   const autoFixingRef = useRef(false);
   const lastErrorRef = useRef<string>("");
@@ -226,7 +226,7 @@ ${viteError.line ? `行号：${viteError.line}` : ''}
           </Button>
           <Button
             variant="secondary"
-            onClick={createSession}
+            onClick={() => { clearMessages(); createSession(); }}
             className="h-8 px-3 text-xs gap-1.5"
           >
             新建项目
