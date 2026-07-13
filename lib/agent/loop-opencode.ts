@@ -15,12 +15,31 @@ import {
   getGlobalOpencodeServer,
 } from "@/lib/opencode/server";
 import { type MessagePart } from "@/lib/opencode/client";
+import { getDefaultModel, getOpencodeModelConfig, type ModelConfig } from "@/lib/model-config";
 
 /** autogo 会话 ID → opencode 会话 ID 的映射 */
 const opencodeSessionMap = new Map<string, string>();
 
 /** opencode 会话 ID 前缀 */
 const OPENCODE_SESSION_PREFIX = "ses-autogo-";
+
+/**
+ * 获取当前使用的模型配置
+ */
+function getModelConfig(): ModelConfig {
+  const model = getDefaultModel();
+  if (!model) {
+    throw new Error("未在 secret.txt 中找到模型配置");
+  }
+  return model;
+}
+
+/**
+ * 从模型配置获取 opencode 的 provider 和 model
+ */
+function getOpencodeModelInput(modelConfig: ModelConfig) {
+  return getOpencodeModelConfig(modelConfig);
+}
 
 /**
  * 核心 Agent 循环
@@ -46,7 +65,6 @@ export async function* runAgent(
     yield { type: "status", message: "正在启动编码引擎..." };
     try {
       server = await startOpencodeServer({ timeout: 15000 });
-      console.log("[runAgent] opencode server:", server.url);
     } catch (err) {
       console.error("[runAgent] 启动 opencode 失败:", err);
       yield { type: "error", message: `启动编码引擎失败：${err instanceof Error ? err.message : err}` };
@@ -67,7 +85,6 @@ export async function* runAgent(
       );
       opencodeSessionMap.set(sessionId, opencodeSessionId);
     } catch (err) {
-      console.error("[runAgent] 创建会话失败:", err);
       yield { type: "error", message: `创建会话失败：${err instanceof Error ? err.message : err}` };
       return;
     }
@@ -75,16 +92,17 @@ export async function* runAgent(
 
   // 3. 异步触发 agent loop
   yield { type: "status", message: "正在生成…" };
-  console.error("[runAgent] promptAsync session=%s", opencodeSessionId);
 
   try {
+    const modelConfig = getModelConfig();
+    const { providerID, modelID } = getOpencodeModelInput(modelConfig);
+
     await client.promptAsync(
       opencodeSessionId,
       { text: userMessage },
-      { providerID: "deepseek", modelID: "deepseek-v4-flash" },
+      { providerID, modelID },
     );
   } catch (err) {
-    console.error("[runAgent] promptAsync 失败:", err);
     yield { type: "error", message: `启动失败：${err instanceof Error ? err.message : err}` };
     return;
   }
@@ -126,14 +144,12 @@ export async function* runAgent(
     // 检查最后一条 assistant 消息是否已完成
     const lastMsg = messages[messages.length - 1];
     if (lastMsg?.info?.finish && lastMsg.info.role === "assistant" && !hasNew) {
-      console.log("[runAgent] agent loop 完成 (finish=%s)", lastMsg.info.finish);
       break;
     }
 
     if (!hasNew) noNewCount++;
   }
 
-  console.log("[runAgent] 轮询结束, noNewCount=%d", noNewCount);
   yield { type: "complete" };
 }
 
@@ -148,15 +164,18 @@ async function getOrCreateOpencodeSession(
   const id = `${OPENCODE_SESSION_PREFIX}${autogoSessionId}`;
   // 用时间戳确保每次都是全新会话（避免 409 复用旧目录）
   const freshId = `${OPENCODE_SESSION_PREFIX}${autogoSessionId}-${Date.now()}`;
+
+  const modelConfig = getModelConfig();
+  const { providerID, modelID } = getOpencodeModelInput(modelConfig);
+
   const result = await client.createSession({
     id: freshId,
     location: { directory: projectDir },
     model: {
-      providerID: "deepseek",
-      id: "deepseek-v4-flash",
+      providerID,
+      id: modelID,
     },
   });
-  console.log("[runAgent] 会话已创建:", result.data.id);
   return result.data.id;
 }
 
@@ -164,13 +183,6 @@ async function getOrCreateOpencodeSession(
  * 将单个 MessagePart 映射为 SseEvent 序列
  */
 function* mapPartToEvents(part: MessagePart): Generator<SseEvent> {
-  // 调试：打印每个 part 的详细信息
-  console.log("[mapPartToEvents] part.type=%s part.text=%s part.state=%o part.outputPaths=%o",
-    part.type,
-    part.text ? part.text.slice(0, 50) + (part.text.length > 50 ? "..." : "") : "",
-    part.state ? part.state.status : "N/A",
-    part.outputPaths);
-
   switch (part.type) {
     case "step-start":
       yield { type: "status", message: "正在思考..." };
@@ -288,7 +300,6 @@ function* mapPartToEvents(part: MessagePart): Generator<SseEvent> {
 
     default:
       // 其余 part 类型静默跳过
-      console.log("[mapPartToEvents] 未处理的 part 类型:", part.type);
       break;
   }
 }

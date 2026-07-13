@@ -14,6 +14,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { randomBytes } from "crypto";
 import { homedir } from "os";
 import path from "path";
+import { parseSecretFile } from "@/lib/model-config";
 
 export interface OpencodeServerConfig {
   /** opencode 源码目录，默认使用 ./opencode */
@@ -139,14 +140,52 @@ export async function startOpencodeServer(
   console.log("  projectDir:", projectDir);
 
   return new Promise((resolve, reject) => {
+    // 从 secret.txt 读取第一个模型的配置，设置环境变量
+    const models = parseSecretFile();
+    const defaultModel = models.length > 0 ? models[0] : null;
+
+    // 根据模型 URL 判断 provider 类型并设置对应的环境变量
+    // opencode 的 provider 已经硬编码了 baseURL，只需要设置 API_KEY
+    const envVars: Record<string, string> = {
+      ...process.env,
+      OPENCODE_SERVER_PASSWORD: authPassword,
+    };
+
+    if (defaultModel) {
+      const url = defaultModel.url.toLowerCase();
+      let providerPrefix = "";
+
+      if (url.includes("deepseek.com")) {
+        providerPrefix = "DEEPSEEK";
+      } else if (url.includes("openai.com")) {
+        providerPrefix = "OPENAI";
+      } else if (url.includes("anthropic.com")) {
+        providerPrefix = "ANTHROPIC";
+      } else if (url.includes("groq.com")) {
+        providerPrefix = "GROQ";
+      } else if (url.includes("hep.com.cn")) {
+        providerPrefix = "HEP";
+      } else if (url.includes("fireworks.ai")) {
+        providerPrefix = "FIREWORKS";
+      } else if (url.includes("together.xyz")) {
+        providerPrefix = "TOGETHERAI";
+      } else if (url.includes("openrouter.ai")) {
+        providerPrefix = "OPENROUTER";
+      } else {
+        // 未知 provider，尝试使用 OPENAI_COMPATIBLE
+        // 注意：这需要 opencode 配置中定义了 openai-compatible provider
+        providerPrefix = "OPENAI_COMPATIBLE";
+      }
+
+      envVars[`${providerPrefix}_API_KEY`] = defaultModel.apiKey;
+      console.log("[opencode] 使用默认模型:", defaultModel.name, `(${providerPrefix})`, `url: ${defaultModel.url}`);
+    } else {
+      console.warn("[opencode] secret.txt 为空或不存在，使用环境变量中的配置");
+    }
+
     const proc = spawn("bun", args, {
       cwd: opencodeDir,
-      env: {
-        ...process.env,
-        // 完整版 OpenCode server 需要的环境变量
-        OPENCODE_SERVER_PASSWORD: authPassword,
-        DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY || "",
-      },
+      env: envVars,
       stdio: ["ignore", "pipe", "pipe"],
     });
 
