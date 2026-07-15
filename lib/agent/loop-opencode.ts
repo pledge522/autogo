@@ -93,6 +93,20 @@ export async function* runAgent(
   // 3. 异步触发 agent loop
   yield { type: "status", message: "正在生成…" };
 
+  // 记录当前已存在的消息，用于后续去重（只推送本轮新增的）
+  const existingMessages = await client.getMessages(opencodeSessionId);
+  const existingPartIds = new Set<string>();
+  for (const msg of existingMessages) {
+    if (msg.info?.role !== "assistant") continue;
+    for (const part of msg.parts) {
+      const partId = (part as any).id || "";
+      if (partId) {
+        const msgId = (msg as any).info?.id || "unknown";
+        existingPartIds.add(`${msgId}-${partId}`);
+      }
+    }
+  }
+
   try {
     const modelConfig = getModelConfig();
     const { providerID, modelID } = getOpencodeModelInput(modelConfig);
@@ -107,29 +121,56 @@ export async function* runAgent(
     return;
   }
 
-  // 4. 轮询消息直到 agent loop 完成
+  // 4. 轮询消息直到 agent loop 完成（只推送本轮新增的 part）
   const seenParts = new Set<string>();
   let noNewCount = 0;
+  let pollCount = 0;
+  let startTime = Date.now();
 
-  while (noNewCount < 60) {
+  while (noNewCount < 30) {
     await new Promise(resolve => setTimeout(resolve, 1000));
+    pollCount++;
 
     const messages = await client.getMessages(opencodeSessionId);
     let hasNew = false;
 
+    // 每 5 次轮询打印一次状态
+    if (pollCount % 5 === 0) {
+      console.log("[runAgent] 轮询 #%d: messages=%d, seenParts=%d, elapsed=%ds",
+        pollCount, messages.length, seenParts.size, Math.round((Date.now() - startTime) / 1000));
+    }
+
     for (const msg of messages) {
       if (msg.info?.role !== "assistant") continue;
+
       for (const part of msg.parts) {
         const partId = (part as any).id || "";
         const partText = part.text || "";
+        const partState = (part as any).state;
 
         // 空 text part 不作去重（它还没有内容，后续会被填充）
         if (part.type === "text" && !partText) continue;
 
-        // 去重：有内容的才记录
-        const key = partId ? `${(msg as any).info?.id || ""}-${partId}` : `${part.type}-${partText.slice(0, 40)}`;
-        if (seenParts.has(key)) continue;
-        seenParts.add(key);
+        // 去重：优先使用 partId 作为唯一标识
+        const msgId = (msg as any).info?.id || "unknown";
+        const key = partId ? `${msgId}-${partId}` : `${part.type}-${partText.slice(0, 100)}`;
+
+        // 跳过本轮开始前已存在的 part（历史消息）
+        if (partId && existingPartIds.has(key)) {
+          continue;
+        }
+
+        // 对于 tool 类型，需要检查 state 是否变化（pending → running → completed）
+        // 使用 state.status 作为去重 key 的一部分
+        const fullKey = part.type === "tool" && partState?.status
+          ? `${key}-${partState.status}`
+          : key;
+
+        // 跳过本轮已推送过的 part（相同状态）
+        if (seenParts.has(fullKey)) {
+          continue;
+        }
+        seenParts.add(fullKey);
         hasNew = true;
         noNewCount = 0;
 
@@ -146,8 +187,6 @@ export async function* runAgent(
     if (lastMsg?.info?.finish && lastMsg.info.role === "assistant" && !hasNew) {
       break;
     }
-
-    if (!hasNew) noNewCount++;
   }
 
   yield { type: "complete" };
@@ -161,8 +200,6 @@ async function getOrCreateOpencodeSession(
   autogoSessionId: string,
   projectDir: string,
 ): Promise<string> {
-  const id = `${OPENCODE_SESSION_PREFIX}${autogoSessionId}`;
-  // 用时间戳确保每次都是全新会话（避免 409 复用旧目录）
   const freshId = `${OPENCODE_SESSION_PREFIX}${autogoSessionId}-${Date.now()}`;
 
   const modelConfig = getModelConfig();
@@ -189,7 +226,6 @@ function* mapPartToEvents(part: MessagePart): Generator<SseEvent> {
       break;
 
     case "reasoning": {
-      // 思考过程 —— 产生 thinking 事件，展示实际内容
       const text = part.text || "";
       if (text) {
         yield { type: "thinking", text };
@@ -198,10 +234,8 @@ function* mapPartToEvents(part: MessagePart): Generator<SseEvent> {
     }
 
     case "text": {
-      // AI 生成的文本 —— 作为 text_delta 推送
       const text = part.text || "";
       if (text) {
-        // 按自然段或字符分批推，模拟流式
         const chunks = splitText(text);
         for (const chunk of chunks) {
           yield { type: "text_delta", text: chunk };
@@ -217,7 +251,6 @@ function* mapPartToEvents(part: MessagePart): Generator<SseEvent> {
 
       switch (state.status) {
         case "pending":
-          // pending 时 input 为空，跳过，等 running/completed
           break;
 
         case "running": {
@@ -249,7 +282,6 @@ function* mapPartToEvents(part: MessagePart): Generator<SseEvent> {
     }
 
     case "file": {
-      // 文件 part —— 产生 file_change 事件
       const path = (part as any).filename || (part as any).url || "unknown";
       yield {
         type: "file_change",
@@ -259,7 +291,6 @@ function* mapPartToEvents(part: MessagePart): Generator<SseEvent> {
       break;
     }
 
-    // 兼容旧的 tool-use / tool-call 格式
     case "tool-use":
     case "tool-call":
       yield {
@@ -275,7 +306,6 @@ function* mapPartToEvents(part: MessagePart): Generator<SseEvent> {
         name: part.tool || "unknown",
         output: summarizeContent(part.content),
       };
-      // 同时检查是否有输出路径
       if (part.outputPaths && part.outputPaths.length > 0) {
         for (const path of part.outputPaths) {
           yield {
@@ -288,7 +318,6 @@ function* mapPartToEvents(part: MessagePart): Generator<SseEvent> {
       break;
 
     case "step-finish":
-      // 每步完成
       break;
 
     case "error":
@@ -299,7 +328,6 @@ function* mapPartToEvents(part: MessagePart): Generator<SseEvent> {
       break;
 
     default:
-      // 其余 part 类型静默跳过
       break;
   }
 }
@@ -329,7 +357,6 @@ function summarizeContent(content: unknown): string {
   return texts.length > 0 ? texts.join("\n") : "✓ 完成";
 }
 
-/** 清理 —— 保持 server 在后台运行 */
 export async function cleanupOpencode(): Promise<void> {
   console.log("[runAgent] 清理（保持 server 运行中）");
 }

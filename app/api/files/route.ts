@@ -52,6 +52,8 @@ async function listFiles(dir: string, baseDir: string, prefix = ""): Promise<str
       // 过滤：隐藏文件、node_modules、dist、build 等构建产物
       if (e.name.startsWith(".")) return false;
       if (e.name === "node_modules" || e.name === "dist" || e.name === "build") return false;
+      // 过滤配置文件，不展示给用户
+      if (e.name === "package.json" || e.name === "vite.config.ts") return false;
       return true;
     })
     .sort((a, b) => {

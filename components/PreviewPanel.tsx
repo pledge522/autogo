@@ -40,13 +40,24 @@ export function PreviewPanel({ sessionId, port, onViteError }: PreviewPanelProps
   useEffect(() => {
     if (!sessionId) return;
 
+    let checkTimer: NodeJS.Timeout | null = null;
+
     const checkProjectFiles = async () => {
       try {
         const res = await fetch(`/api/files?id=${sessionId}`);
         const data = await res.json();
         // 如果 files 数组中有 index.html 或 src/ 目录，说明项目已经有内容
         const hasContent = data.files && data.files.length > 0;
+        const wasEmpty = projectIsEmpty;
         setProjectIsEmpty(!hasContent);
+
+        // 项目从空变为非空时，自动切换到 preview 标签
+        if (wasEmpty && !hasContent) {
+          // 延迟 500ms 等 Vite 构建完成
+          setTimeout(() => {
+            setIframeKey((k) => k + 1); // 刷新 iframe
+          }, 500);
+        }
       } catch {
         setProjectIsEmpty(true);
       }
@@ -55,10 +66,13 @@ export function PreviewPanel({ sessionId, port, onViteError }: PreviewPanelProps
     // 立即检查一次
     checkProjectFiles();
 
-    // 每 2 秒检查一次，项目生成后自动切换
-    const interval = setInterval(checkProjectFiles, 2000);
-    return () => clearInterval(interval);
-  }, [sessionId]);
+    // 项目为空时每 1 秒检查一次，非空时每 3 秒检查一次
+    const interval = setInterval(checkProjectFiles, projectIsEmpty ? 1000 : 3000);
+    return () => {
+      clearInterval(interval);
+      if (checkTimer) clearTimeout(checkTimer);
+    };
+  }, [sessionId, projectIsEmpty]);
 
   // 监听 iframe 的 postMessage（Vite HMR 错误）
   useEffect(() => {
