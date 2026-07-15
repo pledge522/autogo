@@ -120,6 +120,7 @@ export function FileTree({ sessionId, onSelect }: FileTreeProps) {
 
   useEffect(() => {
     setLoading(true);
+    setTree([]); // 先清空旧文件树
     fetch(`/api/files?id=${sessionId}`)
       .then((res) => res.json())
       .then((data) => {

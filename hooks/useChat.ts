@@ -99,10 +99,13 @@ export function useChat(): UseChatReturn {
             case "command_output":
               // 命令输出 - 追加到上一个 command_start 或 command_output
               setMessages((prev) => {
+                // 找到最后一个 user 消息的位置
+                const lastUserIndex = prev.findLastIndex(m => m.role === "user");
                 const lastCommandIndex = prev.findLastIndex(
                   m => m.role === "command_start" || m.role === "command_output" || m.role === "command_complete"
                 );
-                if (lastCommandIndex >= 0) {
+                // 只有在最后一个 user 消息之后的命令才是当前轮次的
+                if (lastCommandIndex >= 0 && lastCommandIndex > lastUserIndex) {
                   const lastMsg = prev[lastCommandIndex];
                   const updatedMsg = {
                     ...lastMsg,
@@ -112,7 +115,7 @@ export function useChat(): UseChatReturn {
                   newPrev[lastCommandIndex] = updatedMsg as any;
                   return newPrev;
                 }
-                // 如果没有找到之前的命令消息，创建一个新的
+                // 如果没有找到当前轮次的命令消息，创建一个新的
                 return [
                   ...prev,
                   {
@@ -127,10 +130,13 @@ export function useChat(): UseChatReturn {
             case "command_complete":
               // 命令完成 - 更新上一个命令消息的退出码
               setMessages((prev) => {
+                // 找到最后一个 user 消息的位置
+                const lastUserIndex = prev.findLastIndex(m => m.role === "user");
                 const lastCommandIndex = prev.findLastIndex(
                   m => m.role === "command_start" || m.role === "command_output" || m.role === "command_complete"
                 );
-                if (lastCommandIndex >= 0) {
+                // 只有在最后一个 user 消息之后的命令才是当前轮次的
+                if (lastCommandIndex >= 0 && lastCommandIndex > lastUserIndex) {
                   const lastMsg = prev[lastCommandIndex];
                   const updatedMsg = {
                     ...lastMsg,
@@ -178,8 +184,14 @@ export function useChat(): UseChatReturn {
             case "text_delta":
               // AI 回复的文本片段 — 追加到上一个 assistant 消息，或创建新的
               setMessages((prev) => {
+                // 找到最后一个 user 消息的位置
+                const lastUserIndex = prev.findLastIndex(m => m.role === "user");
+                // 找到最后一个 assistant 消息的位置
                 const lastAssistantIndex = prev.findLastIndex(m => m.role === "assistant");
-                if (lastAssistantIndex >= 0) {
+
+                // 只有在最后一个 user 消息之后的 assistant 消息才是当前轮次的，才能更新
+                // 如果 assistant 消息在 user 消息之前，说明是上一轮对话的，需要创建新的 assistant 消息
+                if (lastAssistantIndex >= 0 && lastAssistantIndex > lastUserIndex) {
                   // 追加到已有的 assistant 消息
                   const lastMsg = prev[lastAssistantIndex];
                   const updatedMsg = {

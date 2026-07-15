@@ -18,10 +18,11 @@ export default function BuilderPage() {
   const autoFixingRef = useRef(false);
   const lastErrorRef = useRef<string>("");
 
-  // 页面加载时自动创建会话
+  // 页面加载时自动创建新会话并清空聊天记录
   useEffect(() => {
+    clearMessages();
     createSession();
-  }, [createSession]);
+  }, [createSession, clearMessages]);
 
   // 检测到 Vite 错误时，自动让 Agent 修复
   useEffect(() => {
@@ -259,6 +260,7 @@ ${viteError.line ? `行号：${viteError.line}` : ''}
           className="flex-1 flex flex-col min-w-0 bg-white rounded-2xl border border-gray-200 shadow-lg overflow-hidden"
         >
           <PreviewPanel
+            key={session!.id}
             sessionId={session!.id}
             port={session!.port}
             onViteError={setViteError}

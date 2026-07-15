@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 
@@ -24,7 +25,7 @@ function getLanguage(filename: string): string {
   return map[ext] || "text";
 }
 
-export function CodeView({ filename, code }: CodeViewProps) {
+export const CodeView = memo(function CodeView({ filename, code }: CodeViewProps) {
   const language = getLanguage(filename);
 
   return (
@@ -47,4 +48,4 @@ export function CodeView({ filename, code }: CodeViewProps) {
       </SyntaxHighlighter>
     </div>
   );
-}
+});

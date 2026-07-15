@@ -5,6 +5,7 @@ import { Eye, Code2, FolderTree, RefreshCw, AlertTriangle } from "lucide-react";
 import { motion } from "framer-motion";
 import { CodeView } from "./CodeView";
 import { FileTree } from "./FileTree";
+import { WelcomeView } from "./WelcomeView";
 
 type Tab = "preview" | "code" | "files";
 
@@ -26,7 +27,38 @@ export function PreviewPanel({ sessionId, port, onViteError }: PreviewPanelProps
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string>("");
   const [hasError, setHasError] = useState(false);
+  const [projectIsEmpty, setProjectIsEmpty] = useState(true);
   const errorRef = useRef<ViteError | null>(null);
+
+  // 会话变化时重置选中文件
+  useEffect(() => {
+    setSelectedFile(null);
+    setFileContent("");
+  }, [sessionId]);
+
+  // 检测项目是否已有文件（定期轮询）
+  useEffect(() => {
+    if (!sessionId) return;
+
+    const checkProjectFiles = async () => {
+      try {
+        const res = await fetch(`/api/files?id=${sessionId}`);
+        const data = await res.json();
+        // 如果 files 数组中有 index.html 或 src/ 目录，说明项目已经有内容
+        const hasContent = data.files && data.files.length > 0;
+        setProjectIsEmpty(!hasContent);
+      } catch {
+        setProjectIsEmpty(true);
+      }
+    };
+
+    // 立即检查一次
+    checkProjectFiles();
+
+    // 每 2 秒检查一次，项目生成后自动切换
+    const interval = setInterval(checkProjectFiles, 2000);
+    return () => clearInterval(interval);
+  }, [sessionId]);
 
   // 监听 iframe 的 postMessage（Vite HMR 错误）
   useEffect(() => {
@@ -58,11 +90,18 @@ export function PreviewPanel({ sessionId, port, onViteError }: PreviewPanelProps
   useEffect(() => {
     if (!sessionId || !selectedFile) return;
 
+    // 大文件不加载（> 50KB 的文件在文件列表中已过滤，这里作为保险）
     fetch(`/api/files?id=${sessionId}&path=${encodeURIComponent(selectedFile)}`)
       .then((res) => res.json())
       .then((data) => {
-        if (data.content !== undefined) {
-          setFileContent(data.content);
+        if (data.content) {
+          // 内容超过 1000 行只展示前 1000 行
+          const lines = data.content.split('\n');
+          if (lines.length > 1000) {
+            setFileContent(lines.slice(0, 1000).join('\n') + '\n\n// ... 文件过长，只展示前 1000 行');
+          } else {
+            setFileContent(data.content);
+          }
         }
       })
       .catch(() => {
@@ -139,18 +178,23 @@ export function PreviewPanel({ sessionId, port, onViteError }: PreviewPanelProps
       {/* 内容区 */}
       <div className="flex-1 min-h-0 relative bg-gray-50">
         {activeTab === "preview" && (
-          <iframe
-            key={iframeKey}
-            src={previewUrl}
-            className="w-full h-full border-0"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
-            title="Preview"
-          />
+          projectIsEmpty ? (
+            <WelcomeView />
+          ) : (
+            <iframe
+              key={iframeKey}
+              src={previewUrl}
+              className="w-full h-full border-0"
+              sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+              title="Preview"
+            />
+          )
         )}
         {activeTab === "code" && (
           <div className="flex h-full">
             <div className="w-56 border-r border-gray-200 bg-white overflow-y-auto">
               <FileTree
+                key={sessionId}
                 sessionId={sessionId}
                 onSelect={(path) => {
                   setSelectedFile(path);
@@ -171,6 +215,7 @@ export function PreviewPanel({ sessionId, port, onViteError }: PreviewPanelProps
         {activeTab === "files" && (
           <div className="h-full overflow-y-auto p-4 bg-white">
             <FileTree
+              key={sessionId}
               sessionId={sessionId}
               onSelect={(path) => {
                 setSelectedFile(path);

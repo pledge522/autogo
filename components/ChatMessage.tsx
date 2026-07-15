@@ -37,11 +37,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
 
 function UserMessage({ content }: { content: string }) {
   return (
-    <motion.div
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      className="flex gap-3 py-2"
-    >
+    <div className="flex gap-3 py-2">
       <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0 shadow-md shadow-blue-500/20">
         <User size={14} className="text-white" />
       </div>
@@ -51,7 +47,7 @@ function UserMessage({ content }: { content: string }) {
           <p className="text-sm text-gray-800 whitespace-pre-wrap">{content}</p>
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }
 

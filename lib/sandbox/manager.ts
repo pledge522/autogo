@@ -18,6 +18,7 @@ const SANDBOX_ROOT = join(process.cwd(), "temp");
 
 /**
  * 写入项目模板文件
+ * 只创建最小配置，项目初始为空
  */
 async function writeProjectTemplate(projectDir: string): Promise<void> {
   const files: Record<string, string> = {
@@ -36,16 +37,9 @@ async function writeProjectTemplate(projectDir: string): Promise<void> {
       },
     }, null, 2),
     "vite.config.ts": `import { defineConfig } from 'vite'\nimport react from '@vitejs/plugin-react'\nimport tailwindcss from '@tailwindcss/vite'\n\nexport default defineConfig({\n  plugins: [react(), tailwindcss()],\n  server: { host: '0.0.0.0', hmr: true }\n})\n`,
-    "index.html": `<!doctype html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n    <title>Vibe App</title>\n  </head>\n  <body>\n    <div id="root"></div>\n    <script type="module" src="/src/main.tsx"></script>\n  </body>\n</html>\n`,
-    "src/main.tsx": `import { StrictMode } from 'react'\nimport { createRoot } from 'react-dom/client'\nimport './index.css'\nimport App from './App'\n\ncreateRoot(document.getElementById('root')!).render(\n  <StrictMode><App /></StrictMode>\n)\n`,
-    "src/App.tsx": `export default function App() {\n  return (\n    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">\n      <div className="text-center">\n        <h1 className="text-4xl font-bold text-gray-800 mb-4">🚀 Vibe Coding</h1>\n        <p className="text-gray-600 text-lg">告诉 AI 你想做什么，它来帮你实现</p>\n      </div>\n    </div>\n  )\n}\n`,
-    "src/index.css": `@import "tailwindcss";\n`,
   };
 
-  // 创建 src 目录
-  await mkdir(join(projectDir, "src"), { recursive: true });
-
-  // 写入所有文件
+  // 写入配置文件
   for (const [path, content] of Object.entries(files)) {
     await writeFile(join(projectDir, path), content, "utf-8");
   }

@@ -12,8 +12,6 @@ type HistoryEntry = {
   result: string;
 };
 
-const SCIENTIFIC_MODE = false;
-
 const SCIENTIFIC_BUTTONS = [
   { label: "sin", action: "sin" },
   { label: "cos", action: "cos" },
@@ -119,16 +117,21 @@ export default function CalculatorPage() {
 
       if (prevValue === null) {
         setPrevValue(currentValue);
+        setWaitingForOperand(true);
+        setOperator(nextOperator);
+        if (nextOperator) {
+          setExpression(`${display} ${nextOperator}`);
+        }
       } else if (operator) {
         const result = calculate(prevValue, currentValue, operator);
-        setDisplay(String(result));
+        const resultStr = String(result);
+        setDisplay(resultStr);
         setPrevValue(result);
-      }
-
-      setWaitingForOperand(true);
-      setOperator(nextOperator);
-      if (nextOperator) {
-        setExpression(`${display} ${nextOperator}`);
+        setWaitingForOperand(true);
+        setOperator(nextOperator);
+        if (nextOperator) {
+          setExpression(`${resultStr} ${nextOperator}`);
+        }
       }
     },
     [display, prevValue, operator]

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readdir, readFile } from "fs/promises";
+import { readdir, readFile, stat } from "fs/promises";
 import { join, resolve } from "path";
 import { getSession } from "@/lib/sandbox/manager";
 
@@ -48,7 +48,12 @@ async function listFiles(dir: string, baseDir: string, prefix = ""): Promise<str
   const result: string[] = [];
 
   const sorted = entries
-    .filter((e) => !e.name.startsWith(".") && e.name !== "node_modules")
+    .filter((e) => {
+      // 过滤：隐藏文件、node_modules、dist、build 等构建产物
+      if (e.name.startsWith(".")) return false;
+      if (e.name === "node_modules" || e.name === "dist" || e.name === "build") return false;
+      return true;
+    })
     .sort((a, b) => {
       // 目录在前
       if (a.isDirectory() && !b.isDirectory()) return -1;
@@ -65,7 +70,11 @@ async function listFiles(dir: string, baseDir: string, prefix = ""): Promise<str
       const subFiles = await listFiles(fullPath, baseDir, relativePath);
       result.push(...subFiles);
     } else {
-      result.push(relativePath);
+      // 过滤大文件（> 50KB）
+      const stats = await stat(fullPath);
+      if (stats.size < 50 * 1024) {
+        result.push(relativePath);
+      }
     }
   }
 

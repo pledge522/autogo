@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Sparkles, Code, Zap, Layers, Calculator } from "lucide-react";
+import { Sparkles, Code, Zap, Layers } from "lucide-react";
 
 export default function Home() {
   const [hoveredFeature, setHoveredFeature] = useState<number | null>(null);
@@ -41,13 +41,6 @@ export default function Home() {
             </span>
           </div>
           <div className="flex items-center gap-3">
-            <Link
-              href="/calculator"
-              className="px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-full text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-700 transition-all"
-            >
-              <Calculator className="w-4 h-4 inline mr-1.5" />
-              计算器
-            </Link>
             <Link
               href="/builder"
               className="px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-full text-sm font-medium hover:opacity-90 transition-opacity"
