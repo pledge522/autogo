@@ -1,17 +1,22 @@
 "use client";
 
 import type { ChatMessage as ChatMessageType } from "@/types";
-import { User, Bot, Wrench, AlertCircle, FileCode, Terminal, CheckCircle, Brain } from "lucide-react";
+import { User, Bot, Wrench, AlertCircle, FileCode, Terminal, CheckCircle, Brain, MessageSquare } from "lucide-react";
 import { motion } from "framer-motion";
 import { ThinkingProcess } from "./ThinkingProcess";
 import { FileChangeItem } from "./FileChangeItem";
 import { CommandOutput } from "./CommandOutput";
+import { QuestionMessage } from "./QuestionMessage";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeRaw from "rehype-raw";
 
 interface ChatMessageProps {
   message: ChatMessageType;
+  onSubmitAnswer?: (answers: Record<string, string>) => void;
 }
 
-export function ChatMessage({ message }: ChatMessageProps) {
+export function ChatMessage({ message, onSubmitAnswer }: ChatMessageProps) {
   switch (message.role) {
     case "user":
       return <UserMessage content={message.content} />;
@@ -32,6 +37,8 @@ export function ChatMessage({ message }: ChatMessageProps) {
       return null;
     case "error":
       return <ErrorMessage content={message.content} />;
+    case "question":
+      return <QuestionMessage questions={message.questions} onSubmitAnswer={onSubmitAnswer} />;
   }
 }
 
@@ -88,8 +95,39 @@ function AssistantMessage({ content }: { content: string }) {
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-xs font-medium text-gray-500 mb-1">AI</p>
-        <div className="bg-gray-50 rounded-2xl rounded-tl-none px-4 py-3">
-          <p className="text-sm text-gray-700 mt-1 whitespace-pre-wrap prose-sm max-w-none">{content}</p>
+        <div className="bg-gray-50 rounded-2xl rounded-tl-none px-4 py-3 prose prose-sm max-w-none prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-pre:my-2 prose-headings:my-2">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            rehypePlugins={[rehypeRaw]}
+            components={{
+              // 自定义代码块样式
+              code({ node, className, children, ...props }: any) {
+                const isInline = !children?.some?.((c: any) => c === '\n');
+                if (isInline) {
+                  return <code className="px-1.5 py-0.5 bg-gray-200 rounded text-xs font-mono text-pink-600" {...props}>{children}</code>;
+                }
+                return <pre className="bg-gray-800 text-gray-100 rounded-lg p-3 overflow-x-auto text-xs font-mono"><code {...props}>{children}</code></pre>;
+              },
+              // 自定义列表样式
+              ul: ({ children }: any) => <ul className="list-disc list-inside text-gray-700 space-y-1">{children}</ul>,
+              ol: ({ children }: any) => <ol className="list-decimal list-inside text-gray-700 space-y-1">{children}</ol>,
+              li: ({ children }: any) => <li className="ml-2 text-gray-700">{children}</li>,
+              // 标题样式
+              h1: ({ children }: any) => <h1 className="text-lg font-bold text-gray-900 mt-3 mb-2">{children}</h1>,
+              h2: ({ children }: any) => <h2 className="text-base font-semibold text-gray-900 mt-2 mb-1">{children}</h2>,
+              h3: ({ children }: any) => <h3 className="text-sm font-semibold text-gray-900 mt-2 mb-1">{children}</h3>,
+              // 段落样式
+              p: ({ children }: any) => <p className="text-gray-700 my-1">{children}</p>,
+              // 表格样式
+              table: ({ children }: any) => <div className="overflow-x-auto my-2"><table className="min-w-full border-collapse border border-gray-300 text-xs">{children}</table></div>,
+              th: ({ children }: any) => <th className="border border-gray-300 bg-gray-100 px-2 py-1 text-left font-semibold">{children}</th>,
+              td: ({ children }: any) => <td className="border border-gray-300 px-2 py-1">{children}</td>,
+              // 引用样式
+              blockquote: ({ children }: any) => <blockquote className="border-l-2 border-gray-300 pl-3 text-gray-600 italic my-2">{children}</blockquote>,
+            }}
+          >
+            {content}
+          </ReactMarkdown>
         </div>
       </div>
     </motion.div>

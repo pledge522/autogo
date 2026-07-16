@@ -48,7 +48,7 @@ export async function* runAgent(
   sessionId: string,
   userMessage: string,
 ): AsyncGenerator<SseEvent> {
-  const session = getSession(sessionId);
+  const session = await getSession(sessionId);
   if (!session) {
     yield { type: "error", message: `会话不存在：${sessionId}` };
     return;
@@ -255,17 +255,34 @@ function* mapPartToEvents(part: MessagePart): Generator<SseEvent> {
 
         case "running": {
           const toolInput = (state.input || {}) as Record<string, unknown>;
-          yield { type: "tool_call", name: toolName, input: toolInput };
+
+          // 特殊处理 question 工具：发送 question 事件而不是 tool_call
+          if (toolName === "question" && toolInput.questions) {
+            yield {
+              type: "question",
+              questions: toolInput.questions as {
+                question: string;
+                header: string;
+                options: { label: string; description?: string; preview?: string }[];
+                multiple?: boolean;
+              }[]
+            };
+          } else {
+            yield { type: "tool_call", name: toolName, input: toolInput };
+          }
           break;
         }
 
         case "completed": {
           const output = state.output || state.title || "✓ 完成";
-          yield {
-            type: "tool_result",
-            name: toolName,
-            output: output.length > 500 ? output.slice(0, 500) + "…" : output,
-          };
+          // question 工具不需要显示 result
+          if (toolName !== "question") {
+            yield {
+              type: "tool_result",
+              name: toolName,
+              output: output.length > 500 ? output.slice(0, 500) + "…" : output,
+            };
+          }
           break;
         }
 

@@ -1,25 +1,65 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useSession } from "@/hooks/useSession";
 import { useChat } from "@/hooks/useChat";
 import { ChatPanel } from "@/components/ChatPanel";
 import { ChatInput } from "@/components/ChatInput";
 import { PreviewPanel, type ViteError } from "@/components/PreviewPanel";
-import { Sparkles, Wand2, Bug } from "lucide-react";
+import { Sparkles, Wand2, FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import type { ChatMessage } from "@/types";
 
 export default function BuilderPage() {
-  const { session, isReady, createSession } = useSession();
-  const { messages, isLoading, statusText, sendMessage, abort, setMessages, clearMessages } = useChat();
+  const router = useRouter();
+  const { session, isReady, createSession, loadSession } = useSession();
+  const { messages, isLoading, statusText, sendMessage, submitAnswer, abort, setMessages, clearMessages, loadMessages } = useChat();
   const [viteError, setViteError] = useState<ViteError | null>(null);
   const autoFixingRef = useRef(false);
   const lastErrorRef = useRef<string>("");
 
-  // 页面加载时自动创建新会话并清空聊天记录
+  // 页面加载时自动加载最近的项目
+  // 如果 URL 中有 sessionId 参数，则加载该会话
+  // 否则加载最近的一个项目
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const sessionIdFromUrl = params.get("session");
+
+    if (sessionIdFromUrl) {
+      // 从 URL 参数恢复会话
+      loadSession(sessionIdFromUrl);
+      loadMessages(sessionIdFromUrl);
+    } else {
+      // 尝试加载最近的会话
+      fetch("/api/session/latest")
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.session) {
+            console.log("[BuilderPage] 加载最近的会话:", data.session.id);
+            loadSession(data.session.id);
+            loadMessages(data.session.id);
+          } else {
+            // 没有历史会话，创建新的
+            console.log("[BuilderPage] 创建新会话");
+            clearMessages();
+            createSession();
+          }
+        })
+        .catch((err) => {
+          console.error("[BuilderPage] 加载最近会话失败:", err);
+          // 出错时创建新会话
+          clearMessages();
+          createSession();
+        });
+    }
+  }, [createSession, clearMessages, loadSession, loadMessages]);
+
+  // 处理"新建项目"按钮点击 - 清除 URL 参数并创建新会话
+  const handleNewProject = useCallback(() => {
+    // 清除 URL 参数
+    window.history.replaceState({}, '', window.location.pathname);
     clearMessages();
     createSession();
   }, [createSession, clearMessages]);
@@ -90,79 +130,6 @@ ${viteError.line ? `行号：${viteError.line}` : ''}
     lastErrorRef.current = "";
   }, []);
 
-  // 测试：添加测试消息
-  const handleTestMessages = useCallback(() => {
-    const testMessages: ChatMessage[] = [
-      { id: 'test-thinking', role: 'thinking', text: '用户要求做一个计算器。这是一个简单的前端任务。\n\n我需要：\n1. 创建一个 HTML 文件\n2. 实现计算器功能\n3. 添加样式' },
-      { id: 'test-file1', role: 'file_change', path: 'src/App.tsx', action: 'create' },
-      { id: 'test-file2', role: 'file_change', path: 'src/index.css', action: 'modify' },
-      { id: 'test-tool', role: 'tool_call', name: 'write_file', input: { path: 'src/App.tsx' } },
-      { id: 'test-tool-result', role: 'tool_result', name: 'write_file', output: '✓ 文件已创建' },
-      { id: 'test-assistant', role: 'assistant', content: '计算器已创建完成！' },
-    ];
-    setMessages(testMessages);
-  }, [setMessages]);
-
-  // 测试：打印 opencode 响应结构
-  const handleDebugOpencode = useCallback(async () => {
-    if (!session) return;
-
-    try {
-      // 测试 opencode event 端点
-      const eventResponse = await fetch("/api/opencode-event");
-      if (!eventResponse.ok) {
-        const errorData = await eventResponse.json();
-        console.error('[Debug] Event API Error:', errorData);
-        alert('Event API Error: ' + JSON.stringify(errorData));
-        return;
-      }
-
-      const reader = eventResponse.body?.getReader();
-      if (!reader) {
-        alert('No reader available');
-        return;
-      }
-
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let eventCount = 0;
-
-      console.log('[Debug] Listening to opencode events...');
-
-      const readEvents = async () => {
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split("\n");
-            buffer = lines.pop() || "";
-
-            for (const line of lines) {
-              if (line.startsWith("data: ")) {
-                const data = JSON.parse(line.slice(6));
-                eventCount++;
-                console.log(`[Debug] Event ${eventCount}:`, data);
-              }
-            }
-
-            // 收到 10 个事件后停止
-            if (eventCount >= 10) break;
-          }
-        } catch (error) {
-          console.error('[Debug] Event reading error:', error);
-        }
-      };
-
-      readEvents();
-      alert('正在监听 opencode 事件，请查看浏览器控制台');
-    } catch (error) {
-      console.error('[Debug] Error:', error);
-      alert('错误：' + (error as any).message);
-    }
-  }, [session]);
-
   // 环境未准备好时显示 Loading
   if (!isReady) {
     return (
@@ -211,23 +178,16 @@ ${viteError.line ? `行号：${viteError.line}` : ''}
             </Button>
           )}
           <Button
-            variant="secondary"
-            onClick={handleTestMessages}
-            className="h-8 px-3 text-xs gap-1.5"
-          >
-            <Bug size={12} />
-            测试消息
-          </Button>
-          <Button
             variant="outline"
-            onClick={handleDebugOpencode}
+            onClick={() => router.push("/projects")}
             className="h-8 px-3 text-xs gap-1.5"
           >
-            🔍 调试
+            <FolderOpen size={12} />
+            项目列表
           </Button>
           <Button
             variant="secondary"
-            onClick={() => { clearMessages(); createSession(); }}
+            onClick={handleNewProject}
             className="h-8 px-3 text-xs gap-1.5"
           >
             新建项目
@@ -242,9 +202,9 @@ ${viteError.line ? `行号：${viteError.line}` : ''}
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.3 }}
-          className="w-[40%] flex flex-col bg-white rounded-2xl border border-gray-200 shadow-lg min-w-[360px] overflow-hidden"
+          className="w-[28%] flex flex-col bg-white rounded-2xl border border-gray-200 shadow-lg min-w-[280px] overflow-hidden"
         >
-          <ChatPanel messages={messages} isLoading={isLoading} statusText={statusText} />
+          <ChatPanel messages={messages} isLoading={isLoading} statusText={statusText} onSubmitAnswer={submitAnswer} />
           <ChatInput
             onSend={handleSend}
             onAbort={abort}

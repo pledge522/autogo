@@ -260,11 +260,6 @@ export class OpencodeClient {
     }
   }
 
-  /** 等待 session agent loop 完成 */
-  async wait(sessionID: string): Promise<void> {
-    await this.request("POST", `/api/session/${sessionID}/wait`);
-  }
-
   /** 订阅实时事件流 */
   async subscribeEvents(directory?: string): Promise<ReadableStream<Uint8Array>> {
     const url = new URL("/event", this.baseUrl);
@@ -278,11 +273,6 @@ export class OpencodeClient {
       throw new OpencodeApiError(response.status, `Failed to subscribe to events`);
     }
     return response.body!;
-  }
-
-  /** 等待会话完成 */
-  async wait(sessionID: string): Promise<void> {
-    await this.request("POST", `/api/session/${sessionID}/wait`);
   }
 
   /** 列出所有会话 */

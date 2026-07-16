@@ -45,6 +45,14 @@ export function PreviewPanel({ sessionId, port, onViteError }: PreviewPanelProps
     const checkProjectFiles = async () => {
       try {
         const res = await fetch(`/api/files?id=${sessionId}`);
+
+        // 如果会话不存在（404），可能是服务器重启了，需要刷新页面重新创建
+        if (res.status === 404) {
+          console.warn('[PreviewPanel] 会话不存在，请刷新页面重新创建');
+          setProjectIsEmpty(true);
+          return;
+        }
+
         const data = await res.json();
         // 如果 files 数组中有 index.html 或 src/ 目录，说明项目已经有内容
         const hasContent = data.files && data.files.length > 0;

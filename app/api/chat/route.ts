@@ -1,23 +1,34 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { runAgent } from "@/lib/agent/loop-opencode";
 import type { SseEvent } from "@/types";
 
 export const dynamic = "force-dynamic";
 
 /**
- * GET  /api/chat?sessionId=...&message=...
- * POST /api/chat  { sessionId, message }
+ * POST /api/chat
+ * body: { sessionId, message }
  *
- * 两种方式都支持：POST 用于向后兼容，GET 配合浏览器原生 EventSource 更可靠。
+ * 使用 POST 避免 URL 过长导致 431 错误
+ */
+export async function POST(request: NextRequest) {
+  try {
+    const { sessionId, message } = await request.json();
+    return handleChat(sessionId, message);
+  } catch {
+    return new Response(
+      JSON.stringify({ error: "无效的请求体" }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    );
+  }
+}
+
+/**
+ * GET /api/chat?sessionId=...&message=...
+ * 保留 GET 用于向后兼容，但建议大消息使用 POST
  */
 export async function GET(request: NextRequest) {
   const sessionId = request.nextUrl.searchParams.get("sessionId");
   const message = request.nextUrl.searchParams.get("message");
-  return handleChat(sessionId, message);
-}
-
-export async function POST(request: NextRequest) {
-  const { sessionId, message } = await request.json();
   return handleChat(sessionId, message);
 }
 
@@ -60,7 +71,7 @@ async function handleChat(sessionId: string | null, message: string | null) {
         if (event.type === "status") {
           console.error("[api/chat] → %s", event.message);
         } else if (event.type === "error") {
-          console.error("[api/chat] ✗ 错误：%s", event.message);
+          console.error("[api/chat]  错误：%s", event.message);
         } else {
           console.error("[api/chat] event: %s", event.type);
         }

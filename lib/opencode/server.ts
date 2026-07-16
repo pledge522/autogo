@@ -185,7 +185,7 @@ export async function startOpencodeServer(
 
     const proc = spawn("bun", args, {
       cwd: opencodeDir,
-      env: envVars,
+      env: { ...process.env, ...envVars },
       stdio: ["ignore", "pipe", "pipe"],
     });
 

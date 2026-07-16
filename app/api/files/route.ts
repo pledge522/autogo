@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "缺少 id 参数" }, { status: 400 });
   }
 
-  const session = getSession(id);
+  const session = await getSession(id);
   if (!session) {
     return NextResponse.json({ error: "会话不存在" }, { status: 404 });
   }

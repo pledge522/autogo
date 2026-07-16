@@ -11,9 +11,10 @@ interface ChatPanelProps {
   isLoading: boolean;
   /** 当前进度描述，有值时显示具体阶段而非通用 "正在思考" */
   statusText: string;
+  onSubmitAnswer?: (answers: Record<string, string>) => void;
 }
 
-export function ChatPanel({ messages, isLoading, statusText }: ChatPanelProps) {
+export function ChatPanel({ messages, isLoading, statusText, onSubmitAnswer }: ChatPanelProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // 自动滚动到底部
@@ -96,7 +97,7 @@ export function ChatPanel({ messages, isLoading, statusText }: ChatPanelProps) {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.2 }}
                 >
-                  <ChatMessage message={msg} />
+                  <ChatMessage message={msg} onSubmitAnswer={onSubmitAnswer} />
                 </motion.div>
               ))}
             </div>

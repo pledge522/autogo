@@ -21,7 +21,8 @@ export type SseEvent =
   | { type: "command_output"; output: string }
   | { type: "command_complete"; exitCode: number }
   | { type: "error"; message: string }
-  | { type: "complete" };
+  | { type: "complete" }
+  | { type: "question"; questions: { question: string; header: string; options: { label: string; description?: string; preview?: string }[]; multiple?: boolean }[] };
 
 /** 前端聊天消息 */
 export type ChatMessage =
@@ -34,4 +35,5 @@ export type ChatMessage =
   | { id: string; role: "command_start"; command: string }
   | { id: string; role: "command_output"; output: string }
   | { id: string; role: "command_complete"; exitCode: number }
-  | { id: string; role: "error"; content: string };
+  | { id: string; role: "error"; content: string }
+  | { id: string; role: "question"; questions: { question: string; header: string; options: { label: string; description?: string; preview?: string }[]; multiple?: boolean }[]; selectedAnswers?: Record<string, string> };
