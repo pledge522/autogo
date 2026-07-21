@@ -54,6 +54,8 @@ async function listFiles(dir: string, baseDir: string, prefix = ""): Promise<str
       if (e.name === "node_modules" || e.name === "dist" || e.name === "build") return false;
       // 过滤配置文件，不展示给用户
       if (e.name === "package.json" || e.name === "vite.config.ts") return false;
+      // 根目录的 index.html 是模板文件
+      if (dir === baseDir && e.name === "index.html") return false;
       return true;
     })
     .sort((a, b) => {
@@ -68,10 +70,21 @@ async function listFiles(dir: string, baseDir: string, prefix = ""): Promise<str
     const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
 
     if (entry.isDirectory()) {
-      result.push(`${relativePath}/`);
       const subFiles = await listFiles(fullPath, baseDir, relativePath);
-      result.push(...subFiles);
+      // 只有当目录有非模板文件时才显示
+      if (subFiles.length > 0) {
+        result.push(`${relativePath}/`);
+        result.push(...subFiles);
+      }
     } else {
+      // 过滤模板文件（src/index.css, src/main.tsx 等）
+      const templatePaths = new Set([
+        "src/index.css",
+        "src/main.tsx",
+      ]);
+      if (templatePaths.has(relativePath)) {
+        continue;
+      }
       // 过滤大文件（> 50KB）
       const stats = await stat(fullPath);
       if (stats.size < 50 * 1024) {

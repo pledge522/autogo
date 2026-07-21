@@ -21,7 +21,7 @@ const SESSION_META_FILE = "session-meta.json";
 
 /**
  * 写入项目模板文件
- * 只创建最小配置，项目初始为空
+ * 只创建配置文件，不创建渲染文件（让项目初始状态为空页面）
  */
 async function writeProjectTemplate(projectDir: string): Promise<void> {
   const srcDir = join(projectDir, "src");
@@ -43,7 +43,7 @@ async function writeProjectTemplate(projectDir: string): Promise<void> {
       },
     }, null, 2),
     "vite.config.ts": `import { defineConfig } from 'vite'\nimport react from '@vitejs/plugin-react'\nimport tailwindcss from '@tailwindcss/vite'\n\nexport default defineConfig({\n  plugins: [react(), tailwindcss()],\n  server: { host: '0.0.0.0', hmr: true }\n})\n`,
-    // 创建最小可运行的 Vite + React 项目
+    // index.html 只包含最小结构，不渲染任何内容
     "index.html": `<!DOCTYPE html>
 <html lang="en">
   <head>
@@ -58,17 +58,13 @@ async function writeProjectTemplate(projectDir: string): Promise<void> {
 </html>`,
     // Tailwind CSS v4 入口
     "src/index.css": `@import "tailwindcss";\n`,
+    // main.tsx 渲染空白页面
     "src/main.tsx": `import React from 'react'
 import ReactDOM from 'react-dom/client'
 import './index.css'
 
 function App() {
-  return (
-    <div style={{ padding: '2rem', textAlign: 'center' }}>
-      <h1>欢迎来到 Vibe Coding</h1>
-      <p style={{ color: '#666' }}>告诉 AI 你想做什么，它来帮你实现</p>
-    </div>
-  )
+  return null
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(<App />)
@@ -79,6 +75,19 @@ ReactDOM.createRoot(document.getElementById('root')!).render(<App />)
   for (const [path, content] of Object.entries(files)) {
     await writeFile(join(projectDir, path), content, "utf-8");
   }
+
+  // 写入 OpenCode 配置，启用默认 Skill
+  const opencodeDir = join(projectDir, ".opencode");
+  await mkdir(opencodeDir, { recursive: true });
+  await writeFile(
+    join(opencodeDir, "opencode.json"),
+    JSON.stringify({
+      skills: {
+        paths: ["../../.opencode/skills/llm-deepseek"],
+      },
+    }, null, 2),
+    "utf-8"
+  );
 }
 
 /**

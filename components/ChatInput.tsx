@@ -39,6 +39,23 @@ export function ChatInput({ onSend, onAbort, isLoading, disabled }: ChatInputPro
     }
   };
 
+  // 监听 WelcomeView 的示例点击事件
+  useEffect(() => {
+    const handleSendPrompt = (e: Event) => {
+      const customEvent = e as CustomEvent<{ text: string }>;
+      if (customEvent.detail?.text) {
+        setText(customEvent.detail.text);
+        // 延迟发送，让用户看到填充的内容
+        setTimeout(() => {
+          onSend(customEvent.detail.text);
+        }, 300);
+      }
+    };
+
+    window.addEventListener('send-prompt', handleSendPrompt as EventListener);
+    return () => window.removeEventListener('send-prompt', handleSendPrompt as EventListener);
+  }, [onSend]);
+
   return (
     <div className="border-t border-gray-100 bg-white/80 backdrop-blur-xl p-4">
       <div className="relative">

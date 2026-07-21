@@ -7,16 +7,17 @@ import { useChat } from "@/hooks/useChat";
 import { ChatPanel } from "@/components/ChatPanel";
 import { ChatInput } from "@/components/ChatInput";
 import { PreviewPanel, type ViteError } from "@/components/PreviewPanel";
-import { Sparkles, Wand2, FolderOpen } from "lucide-react";
+import { Sparkles, Wand2, FolderOpen, Puzzle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { motion } from "framer-motion";
-import type { ChatMessage } from "@/types";
+import { motion, AnimatePresence } from "framer-motion";
+import { SkillModal } from "@/components/SkillModal";
 
 export default function BuilderPage() {
   const router = useRouter();
   const { session, isReady, createSession, loadSession } = useSession();
-  const { messages, isLoading, statusText, sendMessage, submitAnswer, abort, setMessages, clearMessages, loadMessages } = useChat();
+  const { messages, isLoading, statusText, sendMessage, submitAnswer, abort, clearMessages, loadMessages } = useChat();
   const [viteError, setViteError] = useState<ViteError | null>(null);
+  const [isSkillModalOpen, setIsSkillModalOpen] = useState(false);
   const autoFixingRef = useRef(false);
   const lastErrorRef = useRef<string>("");
 
@@ -192,6 +193,14 @@ ${viteError.line ? `行号：${viteError.line}` : ''}
           >
             新建项目
           </Button>
+          <Button
+            variant="outline"
+            onClick={() => setIsSkillModalOpen(true)}
+            className="h-8 px-3 text-xs gap-1.5"
+          >
+            <Puzzle size={14} />
+            技能
+          </Button>
         </div>
       </header>
 
@@ -227,6 +236,16 @@ ${viteError.line ? `行号：${viteError.line}` : ''}
           />
         </motion.div>
       </div>
+
+      {/* 技能挂载模态框 */}
+      <AnimatePresence>
+        {isSkillModalOpen && (
+          <SkillModal
+            isOpen={isSkillModalOpen}
+            onClose={() => setIsSkillModalOpen(false)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

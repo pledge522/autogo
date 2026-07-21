@@ -40,7 +40,19 @@ export default function Home() {
               Vibe Coding
             </span>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Link
+              href="/history-teacher"
+              className="px-4 py-2 text-sm font-medium text-stone-600 hover:text-red-700 transition-colors"
+            >
+              史鉴
+            </Link>
+            <Link
+              href="/assistant"
+              className="px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors"
+            >
+              对话助手
+            </Link>
             <Link
               href="/builder"
               className="px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-full text-sm font-medium hover:opacity-90 transition-opacity"

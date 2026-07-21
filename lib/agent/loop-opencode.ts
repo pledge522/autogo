@@ -14,7 +14,7 @@ import {
   startOpencodeServer,
   getGlobalOpencodeServer,
 } from "@/lib/opencode/server";
-import { type MessagePart } from "@/lib/opencode/client";
+import { type MessagePart, createOpencodeClient } from "@/lib/opencode/client";
 import { getDefaultModel, getOpencodeModelConfig, type ModelConfig } from "@/lib/model-config";
 
 /** autogo 会话 ID → opencode 会话 ID 的映射 */
@@ -72,7 +72,12 @@ export async function* runAgent(
     }
   }
 
-  const client = server.client;
+  // 为当前 session 创建 client，传入 projectDir 让 opencode 在正确的目录下工作
+  const client = createOpencodeClient({
+    baseUrl: server.url,
+    directory: session.projectDir,
+    password: server.password,
+  });
 
   // 2. 创建或复用 opencode 会话
   let opencodeSessionId = opencodeSessionMap.get(sessionId);

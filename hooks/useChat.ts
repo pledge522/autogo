@@ -359,6 +359,8 @@ export function useChat(): UseChatReturn {
   const clearMessages = useCallback(() => {
     setMessages([]);
     isSendingRef.current = false;
+    setIsLoading(false);
+    setStatusText("");
     currentSessionId.current = null;
     setPendingQuestion(null);
   }, []);

@@ -40,6 +40,8 @@ export interface OpencodeServer {
   client: OpencodeClient;
   /** 底层进程 */
   process: ChildProcess;
+  /** 认证密码 */
+  password: string;
 }
 
 const PASSWORD_DIR = path.join(homedir(), ".local", "state", "opencode");
@@ -240,6 +242,7 @@ export async function startOpencodeServer(
             url: serverUrl,
             client,
             process: proc,
+            password: authPassword,
             close: async () => {
               console.log("[opencode] Closing server...");
               stopOpencodeProcess(proc);
